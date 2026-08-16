@@ -1,0 +1,10 @@
+global using MailKit.Net.Smtp;
+global using Microsoft.Extensions.Configuration;
+global using Microsoft.Extensions.DependencyInjection;
+global using Microsoft.Extensions.Logging;
+global using Microsoft.Extensions.Options;
+global using NSubstitute;
+global using NSubstitute.ExceptionExtensions;
+global using Shouldly;
+global using SyntaxCircus.Email;
+global using Xunit;

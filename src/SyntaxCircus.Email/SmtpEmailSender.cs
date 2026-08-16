@@ -8,7 +8,7 @@ namespace SyntaxCircus.Email;
 /// Sends via SMTP using MailKit, retrying transient failures with exponential backoff
 /// (<see cref="SmtpOptions.MaxRetryAttempts"/>, default 3).
 /// </summary>
-public sealed class SmtpEmailSender(IOptions<SmtpOptions> options, ILogger<SmtpEmailSender> logger) : IEmailSender
+public sealed class SmtpEmailSender(IOptions<SmtpOptions> options, ILogger<SmtpEmailSender> logger, ISmtpClientFactory smtpClientFactory) : IEmailSender
 {
     public async Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
     {
@@ -22,7 +22,7 @@ public sealed class SmtpEmailSender(IOptions<SmtpOptions> options, ILogger<SmtpE
         {
             try
             {
-                using var client = new SmtpClient();
+                using var client = smtpClientFactory.Create();
                 await client.ConnectAsync(
                     settings.Host,
                     settings.Port,

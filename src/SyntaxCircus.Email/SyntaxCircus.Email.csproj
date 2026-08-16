@@ -6,9 +6,9 @@
     <PackageId>SyntaxCircus.Email</PackageId>
     <Title>SyntaxCircus Email</Title>
     <Description>An email-sending abstraction with a MailKit-based SMTP implementation (with retry), plus Null and in-memory implementations for dev/test.</Description>
-    <Authors>SyntaxCircus</Authors>
-    <Company>SyntaxCircus</Company>
-    <Copyright>Copyright © SyntaxCircus</Copyright>
+    <Authors>Syntax Circus LLC</Authors>
+    <Company>Syntax Circus LLC</Company>
+    <Copyright>Copyright © Syntax Circus LLC</Copyright>
     <PackageTags>email;smtp;mailkit</PackageTags>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
