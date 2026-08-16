@@ -1,3 +1,5 @@
+using Microsoft.Extensions.DependencyInjection.Extensions;
+
 namespace SyntaxCircus.Email;
 
 public static class EmailServiceCollectionExtensions
@@ -8,6 +10,7 @@ public static class EmailServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(configuration);
 
         services.Configure<SmtpOptions>(configuration.GetSection(SmtpOptions.SectionName));
+        services.TryAddSingleton<ISmtpClientFactory, MailKitSmtpClientFactory>();
         services.AddSingleton<IEmailSender, SmtpEmailSender>();
         return services;
     }

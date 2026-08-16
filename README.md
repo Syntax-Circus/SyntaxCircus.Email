@@ -1,6 +1,7 @@
 # SyntaxCircus.Email
 
 [![Build](https://github.com/Syntax-Circus/SyntaxCircus.Email/actions/workflows/build.yml/badge.svg)](https://github.com/Syntax-Circus/SyntaxCircus.Email/actions/workflows/build.yml)
+[![NuGet](https://img.shields.io/nuget/v/SyntaxCircus.Email.svg)](https://www.nuget.org/packages/SyntaxCircus.Email)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.txt)
 
 An email-sending abstraction: a MailKit-based SMTP implementation with retry, plus Null (dev) and in-memory (test) implementations. Templating and composition are out of scope on purpose — too product-specific to generalize; this only covers the send primitive and provider switch.
