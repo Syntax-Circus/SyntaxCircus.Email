@@ -192,6 +192,24 @@ public class SmtpEmailSenderTests
     }
 
     [Fact]
+    public async Task SendAsync_MultipleCommaSeparatedToAddresses_AddsAllRecipients()
+    {
+        var options = DefaultOptions();
+        var client = FakeClient();
+        MimeMessage? captured = null;
+        _ = client.SendAsync(Arg.Do<MimeMessage>(m => captured = m), Arg.Any<CancellationToken>());
+        var factory = Substitute.For<ISmtpClientFactory>();
+        factory.Create().Returns(client);
+
+        await CreateSender(options, factory).SendAsync(
+            new EmailMessage("first@example.com,second@example.com", "Subject", "Body"),
+            TestContext.Current.CancellationToken);
+
+        captured.ShouldNotBeNull();
+        captured.To.Mailboxes.Select(m => m.Address).ShouldBe(["first@example.com", "second@example.com"]);
+    }
+
+    [Fact]
     public async Task SendAsync_MalformedToAddress_ThrowsImmediatelyWithoutCreatingClient()
     {
         var options = DefaultOptions();
