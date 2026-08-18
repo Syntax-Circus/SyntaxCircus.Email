@@ -41,6 +41,15 @@ public sealed class WelcomeEmailService(IEmailSender emailSender)
 
 `SmtpEmailSender` retries transient send failures with exponential backoff (`MaxRetryAttempts`, default 3). `InMemoryEmailSender` exposes `SentMessages` (and `Clear()`) for assertions in tests — resolve it directly (it's also registered as itself, not just as `IEmailSender`) when you need to inspect what was "sent".
 
+### Multipart (HTML + plain text)
+
+```csharp
+await emailSender.SendAsync(new EmailMessage(
+    to, "Welcome!", "<p>Hi there.</p>", PlainTextBody: "Hi there."), ct);
+```
+
+`PlainTextBody` is only used when `IsBodyHtml` is `true` (the default) — the message is sent as `multipart/alternative` with `Body` as the HTML view and `PlainTextBody` as the paired text view. It's ignored when `IsBodyHtml` is `false`, since there's no HTML view to pair it with.
+
 ## Contributing
 
 Issues and pull requests are welcome:
