@@ -1,9 +1,22 @@
 namespace SyntaxCircus.Email;
 
+/// <summary>
+/// Describes an immutable email message to deliver.
+/// </summary>
 /// <param name="To">
 /// One recipient address, or multiple comma-separated addresses (e.g. "a@example.com,b@example.com")
 /// to send a single message to more than one primary recipient.
 /// </param>
+/// <param name="Subject">The message subject.</param>
+/// <param name="Body">The HTML or plain-text body, according to <paramref name="IsBodyHtml"/>.</param>
+/// <param name="IsBodyHtml">
+/// Whether <paramref name="Body"/> is HTML. When <see langword="false"/>, it is sent as plain text.
+/// </param>
+/// <param name="From">
+/// An optional sender address that overrides <see cref="SmtpOptions.DefaultFrom"/> for this message.
+/// </param>
+/// <param name="Cc">Optional individual carbon-copy recipient addresses.</param>
+/// <param name="Bcc">Optional individual blind-carbon-copy recipient addresses.</param>
 /// <param name="PlainTextBody">
 /// An optional plain-text alternative view. Only used when <paramref name="IsBodyHtml"/> is
 /// <see langword="true"/> — <paramref name="Body"/> is then sent as the HTML view and this as the

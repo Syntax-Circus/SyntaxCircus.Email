@@ -22,6 +22,44 @@ public class SmtpEmailSenderTests
         return client;
     }
 
+    private sealed class QueueOptionsProvider(params SmtpOptions[] options) : ISmtpOptionsProvider
+    {
+        private readonly Queue<SmtpOptions> options = new(options);
+
+        public int CallCount { get; private set; }
+
+        public CancellationToken LastCancellationToken { get; private set; }
+
+        public ValueTask<SmtpOptions> GetOptionsAsync(CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            LastCancellationToken = cancellationToken;
+            return ValueTask.FromResult(options.Dequeue());
+        }
+    }
+
+    private sealed class ThrowingOptionsProvider(Exception exception) : ISmtpOptionsProvider
+    {
+        public int CallCount { get; private set; }
+
+        public ValueTask<SmtpOptions> GetOptionsAsync(CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            return ValueTask.FromException<SmtpOptions>(exception);
+        }
+    }
+
+    private sealed class CancelledOptionsProvider : ISmtpOptionsProvider
+    {
+        public int CallCount { get; private set; }
+
+        public ValueTask<SmtpOptions> GetOptionsAsync(CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            return ValueTask.FromCanceled<SmtpOptions>(cancellationToken);
+        }
+    }
+
     [Fact]
     public async Task SendAsync_HappyPath_ConnectsAuthenticatesSendsAndDisconnects()
     {
@@ -323,5 +361,119 @@ public class SmtpEmailSenderTests
         await CreateSender(options, factory).SendAsync(new EmailMessage("to@example.com", "Subject", "Body"), TestContext.Current.CancellationToken);
 
         factory.Received(1).Create();
+    }
+
+    [Fact]
+    public async Task SendAsync_DynamicOptionsProvider_UsesFreshSnapshotForEachSend()
+    {
+        var firstOptions = DefaultOptions();
+        firstOptions.Host = "first.smtp.example.com";
+        firstOptions.Port = 2525;
+        firstOptions.Username = "first-user";
+        firstOptions.Password = "first-password";
+        firstOptions.DefaultFrom = "first@example.com";
+        var secondOptions = DefaultOptions();
+        secondOptions.Host = "second.smtp.example.com";
+        secondOptions.Port = 465;
+        secondOptions.Username = "second-user";
+        secondOptions.Password = "second-password";
+        secondOptions.DefaultFrom = "second@example.com";
+        secondOptions.UseStartTls = false;
+
+        var optionsProvider = new QueueOptionsProvider(firstOptions, secondOptions);
+        var firstClient = FakeClient();
+        var secondClient = FakeClient();
+        MimeMessage? firstMessage = null;
+        MimeMessage? secondMessage = null;
+        _ = firstClient.SendAsync(Arg.Do<MimeMessage>(message => firstMessage = message), Arg.Any<CancellationToken>());
+        _ = secondClient.SendAsync(Arg.Do<MimeMessage>(message => secondMessage = message), Arg.Any<CancellationToken>());
+        var factory = Substitute.For<ISmtpClientFactory>();
+        factory.Create().Returns(firstClient, secondClient);
+        var sender = new SmtpEmailSender(
+            optionsProvider,
+            Substitute.For<ILogger<SmtpEmailSender>>(),
+            factory);
+        using var cancellationSource = new CancellationTokenSource();
+
+        await sender.SendAsync(new EmailMessage("to@example.com", "First", "Body"), cancellationSource.Token);
+        await sender.SendAsync(new EmailMessage("to@example.com", "Second", "Body"), cancellationSource.Token);
+
+        optionsProvider.CallCount.ShouldBe(2);
+        optionsProvider.LastCancellationToken.ShouldBe(cancellationSource.Token);
+        await firstClient.Received(1).ConnectAsync("first.smtp.example.com", 2525, SecureSocketOptions.StartTls, cancellationSource.Token);
+        await firstClient.Received(1).AuthenticateAsync("first-user", "first-password", cancellationSource.Token);
+        firstMessage.ShouldNotBeNull();
+        firstMessage.From.Mailboxes.Single().Address.ShouldBe("first@example.com");
+        await secondClient.Received(1).ConnectAsync("second.smtp.example.com", 465, SecureSocketOptions.Auto, cancellationSource.Token);
+        await secondClient.Received(1).AuthenticateAsync("second-user", "second-password", cancellationSource.Token);
+        secondMessage.ShouldNotBeNull();
+        secondMessage.From.Mailboxes.Single().Address.ShouldBe("second@example.com");
+    }
+
+    [Fact]
+    public async Task SendAsync_OptionsProviderFails_DoesNotCreateClientOrRetry()
+    {
+        var provider = new ThrowingOptionsProvider(new InvalidOperationException("settings unavailable"));
+        var factory = Substitute.For<ISmtpClientFactory>();
+        var sender = new SmtpEmailSender(provider, Substitute.For<ILogger<SmtpEmailSender>>(), factory);
+
+        var exception = await Should.ThrowAsync<InvalidOperationException>(() =>
+            sender.SendAsync(new EmailMessage("to@example.com", "Subject", "Body"), TestContext.Current.CancellationToken));
+
+        exception.Message.ShouldBe("settings unavailable");
+        factory.DidNotReceive().Create();
+        provider.CallCount.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task SendAsync_DynamicOptionsProvider_UsesOneSnapshotAcrossRetries()
+    {
+        var options = DefaultOptions();
+        options.Host = "retry.smtp.example.com";
+        options.MaxRetryAttempts = 2;
+        var optionsProvider = new QueueOptionsProvider(options);
+        var failingClient = FakeClient();
+        failingClient.ConnectAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<SecureSocketOptions>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new IOException("connect failed"));
+        var succeedingClient = FakeClient();
+        var factory = Substitute.For<ISmtpClientFactory>();
+        factory.Create().Returns(failingClient, succeedingClient);
+        var sender = new SmtpEmailSender(
+            optionsProvider,
+            Substitute.For<ILogger<SmtpEmailSender>>(),
+            factory);
+
+        await sender.SendAsync(new EmailMessage("to@example.com", "Subject", "Body"), TestContext.Current.CancellationToken);
+
+        optionsProvider.CallCount.ShouldBe(1);
+        await failingClient.Received(1).ConnectAsync(
+            "retry.smtp.example.com",
+            587,
+            SecureSocketOptions.StartTls,
+            TestContext.Current.CancellationToken);
+        await succeedingClient.Received(1).ConnectAsync(
+            "retry.smtp.example.com",
+            587,
+            SecureSocketOptions.StartTls,
+            TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task SendAsync_OptionsProviderCancellation_PropagatesWithoutCreatingClient()
+    {
+        using var cancellationSource = new CancellationTokenSource();
+        cancellationSource.Cancel();
+        var optionsProvider = new CancelledOptionsProvider();
+        var factory = Substitute.For<ISmtpClientFactory>();
+        var sender = new SmtpEmailSender(
+            optionsProvider,
+            Substitute.For<ILogger<SmtpEmailSender>>(),
+            factory);
+
+        await Should.ThrowAsync<OperationCanceledException>(() =>
+            sender.SendAsync(new EmailMessage("to@example.com", "Subject", "Body"), cancellationSource.Token));
+
+        optionsProvider.CallCount.ShouldBe(1);
+        factory.DidNotReceive().Create();
     }
 }
