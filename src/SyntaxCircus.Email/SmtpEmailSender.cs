@@ -51,7 +51,7 @@ public sealed class SmtpEmailSender(IOptions<SmtpOptions> options, ILogger<SmtpE
     {
         var mimeMessage = new MimeMessage();
         mimeMessage.From.Add(MailboxAddress.Parse(string.IsNullOrWhiteSpace(message.From) ? defaultFrom : message.From));
-        mimeMessage.To.Add(MailboxAddress.Parse(message.To));
+        mimeMessage.To.AddRange(InternetAddressList.Parse(message.To));
 
         foreach (var cc in message.Cc ?? [])
         {
