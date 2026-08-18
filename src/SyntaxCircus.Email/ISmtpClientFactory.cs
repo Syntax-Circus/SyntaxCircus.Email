@@ -9,5 +9,9 @@ namespace SyntaxCircus.Email;
 /// </summary>
 public interface ISmtpClientFactory
 {
+    /// <summary>
+    /// Creates an SMTP client for one connection attempt.
+    /// </summary>
+    /// <returns>A new MailKit SMTP client.</returns>
     ISmtpClient Create();
 }
