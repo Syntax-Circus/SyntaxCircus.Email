@@ -192,6 +192,44 @@ public class SmtpEmailSenderTests
     }
 
     [Fact]
+    public async Task SendAsync_IsBodyHtmlTrueWithPlainTextBody_SetsBothHtmlAndTextBody()
+    {
+        var options = DefaultOptions();
+        var client = FakeClient();
+        MimeMessage? captured = null;
+        _ = client.SendAsync(Arg.Do<MimeMessage>(m => captured = m), Arg.Any<CancellationToken>());
+        var factory = Substitute.For<ISmtpClientFactory>();
+        factory.Create().Returns(client);
+
+        await CreateSender(options, factory).SendAsync(
+            new EmailMessage("to@example.com", "Subject", "<p>hi</p>", IsBodyHtml: true, PlainTextBody: "hi"),
+            TestContext.Current.CancellationToken);
+
+        captured.ShouldNotBeNull();
+        captured.HtmlBody.ShouldBe("<p>hi</p>");
+        captured.TextBody.ShouldBe("hi");
+    }
+
+    [Fact]
+    public async Task SendAsync_IsBodyHtmlFalseWithPlainTextBody_PlainTextBodyIgnored()
+    {
+        var options = DefaultOptions();
+        var client = FakeClient();
+        MimeMessage? captured = null;
+        _ = client.SendAsync(Arg.Do<MimeMessage>(m => captured = m), Arg.Any<CancellationToken>());
+        var factory = Substitute.For<ISmtpClientFactory>();
+        factory.Create().Returns(client);
+
+        await CreateSender(options, factory).SendAsync(
+            new EmailMessage("to@example.com", "Subject", "plain text", IsBodyHtml: false, PlainTextBody: "should be ignored"),
+            TestContext.Current.CancellationToken);
+
+        captured.ShouldNotBeNull();
+        captured.TextBody.ShouldBe("plain text");
+        captured.HtmlBody.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task SendAsync_MultipleCommaSeparatedToAddresses_AddsAllRecipients()
     {
         var options = DefaultOptions();

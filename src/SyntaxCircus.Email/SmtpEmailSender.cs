@@ -69,6 +69,10 @@ public sealed class SmtpEmailSender(IOptions<SmtpOptions> options, ILogger<SmtpE
         if (message.IsBodyHtml)
         {
             bodyBuilder.HtmlBody = message.Body;
+            if (!string.IsNullOrEmpty(message.PlainTextBody))
+            {
+                bodyBuilder.TextBody = message.PlainTextBody;
+            }
         }
         else
         {
