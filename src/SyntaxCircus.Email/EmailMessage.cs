@@ -24,6 +24,11 @@ namespace SyntaxCircus.Email;
 /// <paramref name="IsBodyHtml"/> is <see langword="false"/>, since there's no HTML view to pair it
 /// with — <paramref name="Body"/> alone is sent as plain text in that case.
 /// </param>
+/// <param name="ReplyTo">
+/// An optional Reply-To address. When set, recipient replies are directed here instead of
+/// <paramref name="From"/> (or <see cref="SmtpOptions.DefaultFrom"/>).
+/// </param>
+/// <param name="Attachments">Optional files attached to the message.</param>
 public sealed record EmailMessage(
     string To,
     string Subject,
@@ -32,4 +37,6 @@ public sealed record EmailMessage(
     string? From = null,
     IReadOnlyList<string>? Cc = null,
     IReadOnlyList<string>? Bcc = null,
-    string? PlainTextBody = null);
+    string? PlainTextBody = null,
+    string? ReplyTo = null,
+    IReadOnlyList<EmailAttachment>? Attachments = null);

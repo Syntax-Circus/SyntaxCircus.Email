@@ -268,6 +268,81 @@ public class SmtpEmailSenderTests
     }
 
     [Fact]
+    public async Task SendAsync_ReplyToNotSet_NoReplyToHeaderAdded()
+    {
+        var options = DefaultOptions();
+        var client = FakeClient();
+        MimeMessage? captured = null;
+        _ = client.SendAsync(Arg.Do<MimeMessage>(m => captured = m), Arg.Any<CancellationToken>());
+        var factory = Substitute.For<ISmtpClientFactory>();
+        factory.Create().Returns(client);
+
+        await CreateSender(options, factory).SendAsync(new EmailMessage("to@example.com", "Subject", "Body"), TestContext.Current.CancellationToken);
+
+        captured.ShouldNotBeNull();
+        captured.ReplyTo.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task SendAsync_ReplyToSet_AddsReplyToHeader()
+    {
+        var options = DefaultOptions();
+        var client = FakeClient();
+        MimeMessage? captured = null;
+        _ = client.SendAsync(Arg.Do<MimeMessage>(m => captured = m), Arg.Any<CancellationToken>());
+        var factory = Substitute.For<ISmtpClientFactory>();
+        factory.Create().Returns(client);
+
+        await CreateSender(options, factory).SendAsync(
+            new EmailMessage("to@example.com", "Subject", "Body", ReplyTo: "reply-to@example.com"),
+            TestContext.Current.CancellationToken);
+
+        captured.ShouldNotBeNull();
+        captured.ReplyTo.Mailboxes.Single().Address.ShouldBe("reply-to@example.com");
+    }
+
+    [Fact]
+    public async Task SendAsync_AttachmentsNull_NoAttachmentsAdded()
+    {
+        var options = DefaultOptions();
+        var client = FakeClient();
+        MimeMessage? captured = null;
+        _ = client.SendAsync(Arg.Do<MimeMessage>(m => captured = m), Arg.Any<CancellationToken>());
+        var factory = Substitute.For<ISmtpClientFactory>();
+        factory.Create().Returns(client);
+
+        await CreateSender(options, factory).SendAsync(new EmailMessage("to@example.com", "Subject", "Body"), TestContext.Current.CancellationToken);
+
+        captured.ShouldNotBeNull();
+        captured.Attachments.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task SendAsync_AttachmentsPopulated_AddsAttachmentsWithContentAndType()
+    {
+        var options = DefaultOptions();
+        var client = FakeClient();
+        MimeMessage? captured = null;
+        _ = client.SendAsync(Arg.Do<MimeMessage>(m => captured = m), Arg.Any<CancellationToken>());
+        var factory = Substitute.For<ISmtpClientFactory>();
+        factory.Create().Returns(client);
+        var attachment = new EmailAttachment("report.pdf", [1, 2, 3, 4], "application/pdf");
+
+        await CreateSender(options, factory).SendAsync(
+            new EmailMessage("to@example.com", "Subject", "Body", Attachments: [attachment]),
+            TestContext.Current.CancellationToken);
+
+        captured.ShouldNotBeNull();
+        var mimePart = captured.Attachments.Single().ShouldBeOfType<MimePart>();
+        mimePart.FileName.ShouldBe("report.pdf");
+        mimePart.ContentType.MimeType.ShouldBe("application/pdf");
+        mimePart.Content.ShouldNotBeNull();
+        using var contentStream = new MemoryStream();
+        mimePart.Content.DecodeTo(contentStream, TestContext.Current.CancellationToken);
+        contentStream.ToArray().ShouldBe(attachment.Content);
+    }
+
+    [Fact]
     public async Task SendAsync_MultipleCommaSeparatedToAddresses_AddsAllRecipients()
     {
         var options = DefaultOptions();

@@ -118,6 +118,11 @@ public sealed class SmtpEmailSender : IEmailSender
             mimeMessage.Bcc.Add(MailboxAddress.Parse(bcc));
         }
 
+        if (!string.IsNullOrWhiteSpace(message.ReplyTo))
+        {
+            mimeMessage.ReplyTo.Add(MailboxAddress.Parse(message.ReplyTo));
+        }
+
         mimeMessage.Subject = message.Subject;
 
         var bodyBuilder = new BodyBuilder();
@@ -132,6 +137,11 @@ public sealed class SmtpEmailSender : IEmailSender
         else
         {
             bodyBuilder.TextBody = message.Body;
+        }
+
+        foreach (var attachment in message.Attachments ?? [])
+        {
+            bodyBuilder.Attachments.Add(attachment.FileName, attachment.Content, ContentType.Parse(attachment.ContentType));
         }
 
         mimeMessage.Body = bodyBuilder.ToMessageBody();
