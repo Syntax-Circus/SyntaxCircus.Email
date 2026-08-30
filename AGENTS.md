@@ -3,10 +3,12 @@
 ## Package purpose and boundary
 
 This repository provides a deliberately narrow .NET email-delivery primitive. It owns message
-transport selection and SMTP delivery only. Do not add template rendering, localization, HTML
-sanitization, attachment policy, queueing, durable retry orchestration, delivery tracking, or
-application-specific sender/recipient authorization without an explicit request and a separate
-design.
+transport selection and SMTP delivery only. Basic attachment support (`EmailAttachment`: raw
+bytes, file name, content type — no validation) and a single optional Reply-To address are part
+of the canonical `EmailMessage` API. Do not add template rendering, localization, HTML
+sanitization, attachment policy (size limits, content scanning, type allow-lists), queueing,
+durable retry orchestration, delivery tracking, or application-specific sender/recipient
+authorization without an explicit request and a separate design.
 
 Read [README.md](README.md) for navigation, [docs/package-guide.md](docs/package-guide.md) for
 canonical behavior, [docs/runtime-smtp-options.md](docs/runtime-smtp-options.md) for dynamic SMTP
@@ -17,7 +19,9 @@ settings, and [docs/testing-guide.md](docs/testing-guide.md) for test boundaries
 - `IEmailSender.SendAsync(EmailMessage, CancellationToken)` is the only application-facing send
   abstraction.
 - `EmailMessage` is immutable. `To` may be comma-separated; `Cc`/`Bcc` are individual entries;
-  `PlainTextBody` is meaningful only for HTML messages.
+  `PlainTextBody` is meaningful only for HTML messages; `ReplyTo` is a single optional address;
+  `Attachments` is an optional list of `EmailAttachment` (`FileName`, `Content` bytes,
+  `ContentType`), sent as-is via MailKit's `BodyBuilder` with no size or content validation.
 - `AddSmtpEmailSender(IConfiguration)`, `AddNullEmailSender()`, and
   `AddInMemoryEmailSender()` are the supported registrations.
 - `SmtpOptions.SectionName` is `Email:Smtp`.

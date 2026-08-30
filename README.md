@@ -67,6 +67,18 @@ await emailSender.SendAsync(new EmailMessage(
     cancellationToken);
 ```
 
+To attach a file and set a Reply-To address, use `EmailAttachment` and `ReplyTo`:
+
+```csharp
+await emailSender.SendAsync(new EmailMessage(
+    "person@example.com",
+    "Your certificate",
+    "<p>Attached is your certificate.</p>",
+    ReplyTo: "support@example.com",
+    Attachments: [new EmailAttachment("certificate.pdf", pdfBytes, "application/pdf")]),
+    cancellationToken);
+```
+
 ## Documentation
 
 - [Package guide](docs/package-guide.md) - public API, sender selection, message semantics, SMTP

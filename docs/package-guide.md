@@ -10,7 +10,8 @@ and product-specific sender-selection rules.
 | API | Purpose |
 | --- | --- |
 | `IEmailSender` | Asynchronous contract for delivering one `EmailMessage`. |
-| `EmailMessage` | Immutable recipient, subject, body, addressing, and body-format data. |
+| `EmailMessage` | Immutable recipient, subject, body, addressing, body-format, reply-to, and attachment data. |
+| `EmailAttachment` | Immutable file name, raw bytes, and content type for one message attachment. |
 | `SmtpEmailSender` | SMTP implementation based on MailKit. |
 | `NullEmailSender` | Development implementation that logs instead of delivering. |
 | `InMemoryEmailSender` | Test implementation that retains sent messages in memory. |
@@ -72,7 +73,9 @@ var message = new EmailMessage(
     From: "reports@example.com",
     Cc: ["manager@example.com"],
     Bcc: ["archive@example.com"],
-    PlainTextBody: "Your report is ready.");
+    PlainTextBody: "Your report is ready.",
+    ReplyTo: "support@example.com",
+    Attachments: [new EmailAttachment("report.pdf", pdfBytes, "application/pdf")]);
 ```
 
 `To` accepts one address or a comma-separated list for the primary recipient list. `Cc` and `Bcc`
@@ -86,6 +89,14 @@ authorization, HTML safety, or message size.
 When `IsBodyHtml` is `true` (the default), `Body` is the HTML view. If `PlainTextBody` is also
 provided, MailKit constructs a `multipart/alternative` message. When `IsBodyHtml` is `false`,
 `Body` is a plain-text message and `PlainTextBody` is ignored.
+
+`ReplyTo` is optional. When set, it is added as the message's Reply-To address; otherwise no
+Reply-To header is added and replies default to `From`/`SmtpOptions.DefaultFrom`.
+
+`Attachments` is an optional list of `EmailAttachment` values (`FileName`, `Content` as raw bytes,
+and `ContentType`). Each is added as a MIME attachment via MailKit's `BodyBuilder`. The package
+does not enforce attachment size limits, content scanning, or type allow-lists — callers are
+responsible for any such policy before constructing the message.
 
 ## SMTP configuration and delivery behavior
 
@@ -119,7 +130,7 @@ The default static configuration section is:
 
 For every SMTP send, the sender builds the MIME message, opens a new MailKit client, connects,
 optionally authenticates, sends, and disconnects. A client is not reused between sends or retries.
-The package does not pool connections or support attachments, custom MIME headers, DKIM, or
+The package does not pool connections or support custom MIME headers beyond Reply-To, DKIM, or
 delivery receipts.
 
 ## Retries, failures, and cancellation
