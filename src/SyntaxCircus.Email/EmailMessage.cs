@@ -39,4 +39,8 @@ public sealed record EmailMessage(
     IReadOnlyList<string>? Bcc = null,
     string? PlainTextBody = null,
     string? ReplyTo = null,
-    IReadOnlyList<EmailAttachment>? Attachments = null);
+    IReadOnlyList<EmailAttachment>? Attachments = null)
+{
+    /// <summary>Gets an optional MIME Message-Id (addr-spec without angle brackets) retained across retries.</summary>
+    public string? MessageId { get; init; }
+}

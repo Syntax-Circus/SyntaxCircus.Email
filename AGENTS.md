@@ -40,10 +40,14 @@ settings, and [docs/testing-guide.md](docs/testing-guide.md) for test boundaries
    `AddSmtpEmailSender`; the extension uses `TryAddSingleton` defaults.
 4. Resolve dynamic SMTP options once per `SendAsync`, before MIME construction and retry
    calculation. Reuse that snapshot for every retry of the same message.
-5. Preserve current SMTP behavior: new client per attempt, authentication only for non-blank
+5. Preserve default SMTP behavior: new client per attempt, authentication only for non-blank
    usernames, null password becomes empty, `UseStartTls` maps to `StartTls` or `Auto`, and retry
    attempts clamp to at least one with `2^attempt`-second delays.
-6. Propagate malformed-address, options-provider, SMTP, and cancellation failures. Do not add
+6. Propagate malformed-address, options-provider, SMTP, and cancellation failures. Additive
+   `TransientOnly` mode returns safe typed failures/cancellation with acceptance uncertainty;
+   legacy final exceptions remain unchanged. Optional TLS/deadline settings override only when set.
+   Successful submission must remain accepted despite disconnect/disposal failure. Never attach
+   raw SMTP exceptions to retry/cleanup logs. See `docs/outbox-safe-smtp.md`. Do not add
    silent fallbacks, broad catches, credential caching, or success-shaped error handling.
 
 ## Dependency injection and concurrency
