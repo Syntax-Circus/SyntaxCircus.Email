@@ -5,7 +5,7 @@ using MimeKit;
 namespace SyntaxCircus.Email;
 
 /// <summary>
-/// Sends via SMTP using MailKit, retrying transient failures with exponential backoff
+/// Sends via SMTP using MailKit, with configurable retry policy and exponential backoff
 /// (<see cref="SmtpOptions.MaxRetryAttempts"/>, default 3).
 /// </summary>
 public sealed class SmtpEmailSender : IEmailSender
@@ -62,7 +62,10 @@ public sealed class SmtpEmailSender : IEmailSender
     /// <returns>A task that completes after SMTP accepts the message.</returns>
     /// <remarks>
     /// Options are resolved once before MIME construction and reused for all retries. Non-cancellation
-    /// SMTP failures retry with exponential delays until <see cref="SmtpOptions.MaxRetryAttempts"/> is exhausted.
+    /// SMTP failures follow <see cref="SmtpOptions.RetryMode"/> with exponential delays until
+    /// <see cref="SmtpOptions.MaxRetryAttempts"/> is exhausted. Successful SMTP acceptance remains
+    /// successful if disconnect or disposal fails. A configured deadline starts after options
+    /// retrieval and MIME construction and includes transport operations and retry delays.
     /// </remarks>
     public async Task SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
     {
@@ -70,41 +73,100 @@ public sealed class SmtpEmailSender : IEmailSender
 
         var settings = await optionsProvider.GetOptionsAsync(cancellationToken).ConfigureAwait(false);
         ArgumentNullException.ThrowIfNull(settings);
+        if (!Enum.IsDefined(settings.RetryMode)) throw new InvalidOperationException("Invalid SMTP retry mode.");
+        var socketOptions = settings.TlsMode switch
+        {
+            null => settings.UseStartTls ? SecureSocketOptions.StartTls : SecureSocketOptions.Auto,
+            SmtpTlsMode.None => SecureSocketOptions.None,
+            SmtpTlsMode.Auto => SecureSocketOptions.Auto,
+            SmtpTlsMode.StartTls => SecureSocketOptions.StartTls,
+            SmtpTlsMode.SslOnConnect => SecureSocketOptions.SslOnConnect,
+            SmtpTlsMode.StartTlsWhenAvailable => SecureSocketOptions.StartTlsWhenAvailable,
+            _ => throw new InvalidOperationException("Invalid SMTP TLS mode."),
+        };
+        if (settings.TotalSendTimeout is { } timeout && (timeout <= TimeSpan.Zero || timeout.TotalMilliseconds > uint.MaxValue - 1))
+            throw new InvalidOperationException("Invalid SMTP total send timeout.");
         var mimeMessage = BuildMimeMessage(message, settings.DefaultFrom);
+        using var deadline = settings.TotalSendTimeout is null ? null : CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (settings.TotalSendTimeout is { } budget) deadline!.CancelAfter(budget);
+        var token = deadline?.Token ?? cancellationToken;
 
         var maxAttempts = Math.Max(1, settings.MaxRetryAttempts);
         for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
+            MailKit.Net.Smtp.ISmtpClient? client = null;
+            var sending = false;
+            var accepted = false;
             try
             {
-                using var client = smtpClientFactory.Create();
+                token.ThrowIfCancellationRequested();
+                client = smtpClientFactory.Create();
                 await client.ConnectAsync(
                     settings.Host,
                     settings.Port,
-                    settings.UseStartTls ? SecureSocketOptions.StartTls : SecureSocketOptions.Auto,
-                    cancellationToken).ConfigureAwait(false);
+                    socketOptions,
+                    token).ConfigureAwait(false);
 
                 if (!string.IsNullOrWhiteSpace(settings.Username))
                 {
-                    await client.AuthenticateAsync(settings.Username, settings.Password ?? string.Empty, cancellationToken).ConfigureAwait(false);
+                    await client.AuthenticateAsync(settings.Username, settings.Password ?? string.Empty, token).ConfigureAwait(false);
                 }
 
-                await client.SendAsync(mimeMessage, cancellationToken).ConfigureAwait(false);
-                await client.DisconnectAsync(true, cancellationToken).ConfigureAwait(false);
+                sending = true;
+                await client.SendAsync(mimeMessage, token).ConfigureAwait(false);
+                accepted = true;
+                try { await client.DisconnectAsync(true, token).ConfigureAwait(false); }
+                catch (Exception) { logger.LogWarning("SMTP cleanup failed after accepted submission."); }
                 return;
             }
-            catch (Exception ex) when (attempt < maxAttempts && ex is not OperationCanceledException)
+            catch (Exception ex)
             {
+                var uncertain = sending && ex is not SmtpCommandException;
+                var kind = Classify(ex);
+                if (ex is OperationCanceledException)
+                {
+                    if (!cancellationToken.IsCancellationRequested && deadline?.IsCancellationRequested == true)
+                        throw new SmtpDeliveryException(SmtpFailureKind.Timeout, uncertain);
+                    if (settings.RetryMode == SmtpRetryMode.TransientOnly)
+                        throw new SmtpDeliveryCanceledException(uncertain, cancellationToken);
+                    throw;
+                }
+                var retry = attempt < maxAttempts && (settings.RetryMode == SmtpRetryMode.Legacy ||
+                    (kind == SmtpFailureKind.Transient && !uncertain));
+                if (!retry)
+                {
+                    if (settings.RetryMode == SmtpRetryMode.TransientOnly) throw new SmtpDeliveryException(kind, uncertain);
+                    throw;
+                }
                 var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt));
-                logger.LogWarning(ex, "SMTP send attempt {Attempt}/{MaxAttempts} failed; retrying in {Delay}.", attempt, maxAttempts, delay);
-                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                logger.LogWarning("SMTP send attempt {Attempt}/{MaxAttempts} failed ({Kind}); retrying in {Delay}.", attempt, maxAttempts, kind, delay);
+                try { await Task.Delay(delay, token).ConfigureAwait(false); }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && deadline?.IsCancellationRequested == true)
+                { throw new SmtpDeliveryException(SmtpFailureKind.Timeout, uncertain); }
+                catch (OperationCanceledException) when (settings.RetryMode == SmtpRetryMode.TransientOnly)
+                { throw new SmtpDeliveryCanceledException(uncertain, cancellationToken); }
+            }
+            finally
+            {
+                try { client?.Dispose(); }
+                catch (Exception) { logger.LogWarning("SMTP client disposal failed; submission accepted: {Accepted}.", accepted); }
             }
         }
     }
 
+    private static SmtpFailureKind Classify(Exception exception) => exception switch
+    {
+        MailKit.Security.AuthenticationException => SmtpFailureKind.Authentication,
+        SmtpCommandException smtp when (int)smtp.StatusCode is >= 400 and < 500 => SmtpFailureKind.Transient,
+        SmtpCommandException smtp when (int)smtp.StatusCode is >= 500 and < 600 => SmtpFailureKind.Permanent,
+        IOException or System.Net.Sockets.SocketException or SmtpProtocolException => SmtpFailureKind.Transient,
+        _ => SmtpFailureKind.Unknown,
+    };
+
     private static MimeMessage BuildMimeMessage(EmailMessage message, string defaultFrom)
     {
         var mimeMessage = new MimeMessage();
+        if (message.MessageId is not null) mimeMessage.MessageId = message.MessageId;
         mimeMessage.From.Add(MailboxAddress.Parse(string.IsNullOrWhiteSpace(message.From) ? defaultFrom : message.From));
         mimeMessage.To.AddRange(InternetAddressList.Parse(message.To));
 

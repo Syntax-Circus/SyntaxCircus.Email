@@ -92,6 +92,10 @@ await emailSender.SendAsync(new EmailMessage(
 
 ## Security note
 
+Durable outbox consumers can use the additive [safe SMTP options](docs/outbox-safe-smtp.md):
+stable `EmailMessage.MessageId`, explicit TLS, a total transport deadline and sanitized typed
+failures. Durable storage and scheduling remain the consuming application's responsibility.
+
 Do not commit SMTP passwords. Use a secret provider or an application-owned
 `ISmtpOptionsProvider`, and never log `SmtpOptions.Password` or decrypted credentials.
 

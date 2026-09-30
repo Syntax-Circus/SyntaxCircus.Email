@@ -5,6 +5,16 @@ namespace SyntaxCircus.Email;
 /// </summary>
 public sealed class SmtpOptions
 {
+    /// <summary>Gets or sets an explicit TLS mode overriding UseStartTls; null retains legacy mapping.</summary>
+    public SmtpTlsMode? TlsMode { get; set; }
+
+    /// <summary>Gets or sets the total transport and retry deadline after options retrieval and MIME construction.
+    /// Null means no total deadline. A positive value no greater than 4,294,967,294 milliseconds is required.</summary>
+    public TimeSpan? TotalSendTimeout { get; set; }
+
+    /// <summary>Gets or sets retry and failure behavior. Legacy preserves existing retry and exception behavior.</summary>
+    public SmtpRetryMode RetryMode { get; set; }
+
     /// <summary>
     /// The configuration section name used by <see cref="EmailServiceCollectionExtensions.AddSmtpEmailSender"/>.
     /// </summary>

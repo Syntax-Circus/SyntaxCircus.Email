@@ -55,7 +55,8 @@ already been registered and is intentionally not replaced.
 ## Contract and behavior
 
 `GetOptionsAsync` returns a **complete** `SmtpOptions` value, not credentials alone. Its result
-controls host, port, TLS behavior, username, password, default sender, and retry count.
+controls host, port, TLS behavior, username, password, default sender, retry count, optional total
+deadline and retry mode. Return the additive fields when using [safe SMTP options](outbox-safe-smtp.md).
 
 - `SmtpEmailSender` calls the provider once at the beginning of each `SendAsync`.
 - One retrieved snapshot is reused for all attempts of that send, including retries.

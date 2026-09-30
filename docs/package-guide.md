@@ -131,17 +131,23 @@ The default static configuration section is:
 For every SMTP send, the sender builds the MIME message, opens a new MailKit client, connects,
 optionally authenticates, sends, and disconnects. A client is not reused between sends or retries.
 The package does not pool connections or support custom MIME headers beyond Reply-To, DKIM, or
-delivery receipts.
+delivery receipts. Optional init-only `MessageId` supplies a stable MIME identity without changing
+the positional constructor. See [safe SMTP options](outbox-safe-smtp.md).
 
 ## Retries, failures, and cancellation
 
 SMTP failures other than `OperationCanceledException` are retried until the configured total
 attempt count is exhausted. Delays are exponential: retry after attempt 1 waits two seconds, then
 four seconds after attempt 2, and so on. The final failure propagates to the `SendAsync` caller.
+The legacy policy remains the default; `TransientOnly` opts into safe typed failures.
 
 Cancellation is passed to option retrieval, connection, authentication, send, disconnect, and
 retry delay. Cancellation is not retried. Invalid messages and provider failures also propagate;
 there is no silent fallback sender or success-shaped error handling.
+
+Successful submission remains accepted if disconnect or disposal fails. All SMTP retry and cleanup
+warnings contain safe categories and no third-party exception. Optional `TlsMode` overrides
+`UseStartTls`, and `TotalSendTimeout` bounds transport and retry delays. See [safe SMTP options](outbox-safe-smtp.md).
 
 The package cannot determine whether a transport failure happened before or after a remote SMTP
 server accepted a message. Consumers that need exactly-once delivery, durable retries, or delivery

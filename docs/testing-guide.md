@@ -82,6 +82,10 @@ When testing extensions to this package, cover:
 - multipart HTML/plain-text construction; and
 - the retained legacy `SmtpEmailSender` constructor.
 
+`OutboxSafeSmtpTests` additionally covers stable MIME identity across retries, TLS precedence,
+safe rejection/authentication failures, uncertain submission, cancellation, total deadlines,
+accepted submission despite disconnect/disposal failure, and sanitized legacy retry logging.
+
 ## Avoid real SMTP in unit tests
 
 Real SMTP tests are integration tests with external credentials, rate limits, mailbox cleanup, and
